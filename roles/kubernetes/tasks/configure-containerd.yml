@@ -1,0 +1,13 @@
+- name: Set containerd systemd cgroup
+  ansible.builtin.shell:
+    cmd: |
+      containerd config default | sed "s/SystemdCgroup = false/SystemdCgroup = true/" > /etc/containerd/config.toml
+      touch /etc/kubernetes/output/containerd-configured
+    creates: /etc/kubernetes/output/containerd-configured
+  register: containerd_configured
+
+- name: Restart containerd service
+  ansible.builtin.service:
+    name: containerd
+    state: restarted
+  when: containerd_configured.changed

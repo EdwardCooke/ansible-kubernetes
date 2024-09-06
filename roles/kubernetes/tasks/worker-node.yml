@@ -1,0 +1,52 @@
+- name: Create kubeadm file
+  ansible.builtin.template:
+    src: worker-kubeadm.yaml.j2
+    dest: "{{ kubernetes_config_directory }}/kubeadm.yaml"
+    owner: root
+    group: root
+    mode: '0644'
+    backup: true
+  register: kubeadm_file
+
+- name: Stop kubelet
+  ansible.builtin.systemd:
+    name: kubelet
+    state: stopped
+    enabled: true
+
+- name: Add the control plane node
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      set -e
+      kubeadm join --config {{ kubernetes_config_directory }}/kubeadm.yaml {{ kubeadm_init_extra_args | default('') }} 2>&1 | tee /etc/kubernetes/output/kubeadm-join
+    creates: /etc/kubernetes/output/kubeadm-join
+    executable: /bin/bash
+  register: kubeadm_init_output
+
+# CIS 1.1.20
+- name: CIS 1.1.20 - Secure certificates
+  ansible.builtin.shell:
+    cmd: chmod 0600 {{ kubernetes_pki_directory }}/*.crt
+
+# CIS 4.1.1
+- name: CIS 4.1.1 - Set kubelet.service to 0600
+  ansible.builtin.shell:
+    cmd: chmod 0600 /usr/lib/systemd/system/kubelet.service
+
+# CIS 4.1.9
+- name: CIS 4.1.9 - Set kubelet config.yaml to 0600
+  ansible.builtin.shell:
+    cmd: chmod 0600 /var/lib/kubelet/config.yaml
+
+- name: Secure static pod path
+  ansible.builtin.replace:
+    regexp: 'staticPodPath:.*'
+    replace: 'staticPodPath:'
+    path: /var/lib/kubelet/config.yaml
+
+- name: Retart kubelet
+  ansible.builtin.service:
+    name: kubelet
+    state: restarted
+    enabled: true

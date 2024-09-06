@@ -1,0 +1,21 @@
+- name: Enable required kernel modules
+  community.general.modprobe:
+    name: "{{ item }}"
+    persistent: present
+  with_items:
+  - overlay
+  - br_netfilter
+
+- name: Set sysctl's
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: true
+    sysctl_file: /etc/sysctl.d/99-kubernetes-cri.conf
+  with_items:
+  - { name: "fs.inotify.max_user_instances", value: 8192 }
+  - { name: "net.bridge.bridge-nf-call-iptables", value: 1 }
+  - { name: "net.bridge.bridge-nf-call-ip6tables", value: 1 }
+  - { name: "net.ipv4.ip_forward", value: 1 }
+  - { name: "net.ipv6.conf.all.disable_ipv6", value: 1 }

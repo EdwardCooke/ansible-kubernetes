@@ -1,0 +1,41 @@
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd
+
+# CIS 4.2.5
+streamingConnectionIdleTimeout: {{ kubernetes_streamingconnectionidletimeout}}
+# CIS 4.2.10
+rotateCertificates: true
+# CIS 4.2.11
+serverTLSBootstrap: true
+# CIS 4.2.12
+tlsCipherSuites:
+{{ kubernetes_strong_cypher_suites | to_nice_yaml }}
+# CIS 4.2.15
+podPidsLimit: {{ kubernetes_podpidslimit }}
+---
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+kind: KubeProxyConfiguration
+mode: "ipvs"
+---
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: JoinConfiguration
+discovery:
+  bootstrapToken:
+    apiServerEndpoint: "{{ kubernetes_api_endpoint }}:{{ kubernetes_api_port }}" 
+    token: "{{ join_token}}"
+    unsafeSkipCAVerification: true
+nodeRegistration:
+  # name: {{ inventory_hostname }}
+  kubeletExtraArgs:
+    cloud-provider: "external"
+    node-ip: "{{ ansible_default_ipv4.address}}"
+---
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: UpgradeConfiguration
+apply:
+  patches:
+    directory: {{ kubernetes_config_directory }}/patches
+node:
+  patches:
+    directory: {{ kubernetes_config_directory }}/patches

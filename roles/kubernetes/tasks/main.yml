@@ -1,0 +1,99 @@
+- name: Validate parameters
+  ansible.builtin.assert:
+    that:
+    - kubernetes_kubelet_csr_approver_ips != None
+    - kubernetes_kubelet_csr_approver_regex != None
+    - kubernetes_api_endpoint != None
+    - kubernetes_api_port > 0
+    - kubernetes_oidc_issuer_url != None
+    - kubernetes_oidc_client_id != None
+    - kubernetes_oidc_tenant != None
+    - kubernetes_vsphere_server != None
+    - kubernetes_vsphere_username != None
+    - kubernetes_vsphere_password != None
+    - kubernetes_vsphere_datacenter != None
+
+- name: Install Packages
+  ansible.builtin.import_tasks: install-packages.yml
+
+- name: Make sure kubernetes config directory exists
+  ansible.builtin.file:
+    path: "{{ kubernetes_config_directory }}"
+    state: directory
+    mode: '0700'
+
+- name: Make sure /etc/kubernetes/output directory exists
+  ansible.builtin.file:
+    path: /etc/kubernetes/output
+    state: directory
+    mode: '0700'
+
+- name: Configure ContainerD
+  ansible.builtin.import_tasks: configure-containerd.yml
+
+- name: Configure Kernel
+  ansible.builtin.import_tasks: configure-kernel.yml
+
+- name: Configure Swap
+  ansible.builtin.import_tasks: configure-swap.yml
+  when: allowswap is not defined
+
+- name: Pull kubernetes images
+  ansible.builtin.shell:
+    cmd: |
+      set -eo pipefail
+      kubeadm config images pull | tee /etc/kubernetes/images-pulled-{{ kubernetes_version }}
+    creates: /etc/kubernetes/images-pulled-{{ kubernetes_version }}
+    executable: /bin/bash
+  register: kubeadm_images_pulled
+
+- name: Write kubeadm images pulled to stdout
+  ansible.builtin.debug:
+    msg: "{{ kubeadm_images_pulled.stdout_lines }}"
+
+- name: Define nodes already joined to existing cluster and first_kube_control_plane
+  ansible.builtin.import_tasks: define-first-kube-control.yml
+
+- name: Generate the encryption key
+  ansible.builtin.import_tasks: define-encryption-key.yml
+
+- name: Configure control planes
+  ansible.builtin.import_tasks: configure-control-plane.yml
+  when: inventory_hostname in groups['control_planes']
+
+- name: Initialize control plane
+  ansible.builtin.import_tasks: initialize-control-plane.yml
+  when: first_kube_control_plane == inventory_hostname
+
+- name: Get Join token
+  ansible.builtin.shell:
+    cmd: |
+      kubeadm token create
+  delegate_to: "{{ first_kube_control_plane }}"
+  run_once: true
+  register: temp_token
+
+- name: Upload certificates so they are fresh and not expired
+  ansible.builtin.shell:
+    cmd: kubeadm init phase --config {{ kubernetes_config_directory }}/kubeadm.yaml upload-certs --upload-certs
+  register: kubeadm_upload_cert
+  run_once: true
+  delegate_to: "{{ first_kube_control_plane }}"
+
+- name: Set facts
+  ansible.builtin.set_fact:
+    join_token: "{{ temp_token.stdout }}"
+    kubeadm_upload_token: "{{ kubeadm_upload_cert.stdout_lines[-1] | trim }}"
+  run_once: true
+
+- name: Configure additional control planes
+  ansible.builtin.import_tasks: secondary-control-plane.yml
+  when: first_kube_control_plane != inventory_hostname and inventory_hostname in groups['control_planes']
+
+- name: Configure worker nodes
+  ansible.builtin.import_tasks: worker-node.yml
+  when: inventory_hostname in groups['worker_nodes']
+
+- name: Set local kube config
+  ansible.builtin.import_tasks: local-kubeconfig.yml
+  run_once: true

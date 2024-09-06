@@ -1,0 +1,11 @@
+[Unit]
+Description=Timer to renew K8S control plane certificates
+
+[Timer]
+OnCalendar=Mon *-*-1,2,3,4,5,6,7 03:00:00
+RandomizedDelaySec={{ 10 * (groups['control_planes'] | length) }}min
+FixedRandomDelay=yes
+Persistent=yes
+
+[Install]
+WantedBy=multi-user.target

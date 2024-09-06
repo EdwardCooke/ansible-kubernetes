@@ -1,0 +1,100 @@
+- name: Kubeadm reset
+  hosts: kubernetes
+  become: true
+  serial: 1
+  tasks:
+  - name: Reset kubeadm
+    ansible.builtin.shell: kubeadm reset -f
+    ignore_errors: yes
+
+- name: Cleanup
+  hosts: kubernetes
+  become: true
+  tasks:
+  - name: Uninstall kubectl, kubeadm, kubelet
+    ansible.builtin.apt:
+      name: "{{ item }}"
+      state: absent
+      allow_change_held_packages : true
+    with_items:
+      - kubectl
+      - kubeadm
+      - kubelet
+      - helm
+    ignore_errors: true
+
+  - name: Remove kubernetes config
+    ansible.builtin.file:
+      path: /etc/kubernetes
+      state: absent
+
+  - name: Remove cni config
+    ansible.builtin.file:
+      path: /etc/cni
+      state: absent
+
+  - name: Remove containerd config
+    ansible.builtin.file:
+      path: /etc/containerd/config.toml
+      state: absent
+
+  - name: Remove kubeconfig
+    ansible.builtin.file:
+      path: /home/edward/.kube/config
+      state: absent
+
+  - name: Remove all containerd containers
+    ansible.builtin.shell: |
+      ctr --namespace k8s.io containers ls -q | xargs -r ctr --namespace k8s.io containers rm
+
+  - name: Remove container logs
+    ansible.builtin.shell: |
+      rm -rf /var/log/containers/*
+
+  - name: Stop systemd units
+    ansible.builtin.systemd:
+      name: k8s-certs-renew.timer
+      state: stopped
+      enabled: no
+    ignore_errors: true
+
+  - name: Remove systemd units
+    ansible.builtin.file:
+      dest: "/etc/systemd/system/{{ item }}"
+      state: absent
+    with_items:
+      - k8s-certs-renew.service
+      - k8s-certs-renew.timer
+  
+  - name: Remove /opt/kubernetes directory
+    ansible.builtin.file:
+      dest: "/opt/kubernetes"
+      state: absent
+  
+  - name: Remove /var/log/apiserver directory
+    ansible.builtin.file:
+      dest: "/var/log/apiserver"
+      state: absent
+    
+  - name: Daemon reload
+    ansible.builtin.systemd:
+      daemon_reload: yes
+
+  - name: Delete etcd user
+    ansible.builtin.user:
+      name: etcd
+      state: absent
+
+  - name: Delete etcd group
+    ansible.builtin.group:
+      name: etcd
+      state: absent
+
+  - name: Reboot
+    ansible.builtin.reboot:
+      reboot_timeout: 300
+      msg: "Rebooting to complete cleanup"
+      connect_timeout: 300
+      pre_reboot_delay: 0
+      post_reboot_delay: 30
+      test_command: uptime

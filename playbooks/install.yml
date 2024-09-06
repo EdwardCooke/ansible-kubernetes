@@ -1,0 +1,24 @@
+- name: Configure the proxies
+  hosts: proxies
+  become: true
+  tasks:
+  roles:
+  - role: ../roles/kubernetes-proxy
+
+- name: "Install containerd.io"
+  hosts:
+  - kubernetes
+  become: true
+  roles:
+  - role: ../roles/docker
+    vars:
+      use_official_apt_repository: false
+      containerd_only: true
+
+- name: "Install kubernetes"
+  hosts:
+  - kubernetes
+  serial: 1
+  become: true
+  roles:
+  - role: ../roles/kubernetes

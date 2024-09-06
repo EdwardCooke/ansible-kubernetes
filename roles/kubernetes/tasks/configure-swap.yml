@@ -1,0 +1,13 @@
+- name: Remove swapfile from /etc/fstab
+  ansible.posix.mount:
+    name: "{{ item }}"
+    fstype: swap
+    state: absent
+  with_items:
+  - swap
+  - none
+
+- name: Disable swap
+  ansible.builtin.shell:
+    cmd: swapoff -a
+  when: ansible_swaptotal_mb > 0 and allowswap is not defined

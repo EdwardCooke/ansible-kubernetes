@@ -1,0 +1,31 @@
+# To help with CIS benchmarks related to securing communication between the api server and kubelet we need to approve csr's for the kublet service.
+# By default this doesn't happen automatically, we are including this project so it does.
+- name: Configure kubelet-csr-approver
+  ansible.builtin.template:
+    src: kubelet-csr-approver.yaml.j2
+    dest: "{{ kubernetes_config_directory }}/kubelet-csr-approver.yaml"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Install kubelet-csr-approver
+  ansible.builtin.shell:
+    cmd: |
+      namespace=kubelet-csr-approver-system
+      helm repo add kubelet-csr-approver https://postfinance.github.io/kubelet-csr-approver
+      helm repo update
+      helm upgrade --install kubelet-csr-approver kubelet-csr-approver/kubelet-csr-approver \
+        --kubeconfig /etc/kubernetes/admin.conf \
+        --namespace ${namespace} \
+        --create-namespace \
+        --set namespace=${namespace} \
+        --values {{ kubernetes_config_directory }}/kubelet-csr-approver.yaml \
+        | tee /etc/kubernetes/output/kubelet-csr-approver-installed
+    executable: /bin/bash
+    creates: /etc/kubernetes/output/kubelet-csr-approver-installed
+  register: csr_approver
+
+- name: Write kubelet-csr-approver to stdout
+  ansible.builtin.debug:
+    msg: "{{ csr_approver.stdout_lines }}"
+  when: csr_approver.stdout_lines is defined

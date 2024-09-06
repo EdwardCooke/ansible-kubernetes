@@ -1,0 +1,79 @@
+kubernetes_cilium_clusterpoolipv4podcidrlist:
+- 10.2.128.0/17
+
+kubernetes_etcd_init_container_image: alpine:latest
+kubernetes_etcd_group_id: 500
+kubernetes_etcd_user_id: 500
+
+kubernetes_kubelet_csr_approver_bypass_dns_checks: false
+kubernetes_kubelet_csr_approver_ips: null
+kubernetes_kubelet_csr_approver_regex: null
+
+kubernetes_admission_control_plugins:
+# CIS 1.2.11
+- AlwaysPullImages
+
+# CIS 1.2.14
+- NodeRestriction
+
+# Defaults as of 1.31
+- CertificateApproval
+- CertificateSigning
+- CertificateSubjectRestriction
+- DefaultIngressClass
+- DefaultStorageClass
+- DefaultTolerationSeconds
+- LimitRanger
+- MutatingAdmissionWebhook
+- NamespaceLifecycle
+- PersistentVolumeClaimResize
+- PodSecurity
+- Priority
+- ResourceQuota
+- RuntimeClass
+- ServiceAccount
+- StorageObjectInUseProtection
+- TaintNodesByCondition
+- ValidatingAdmissionPolicy
+- ValidatingAdmissionWebhook
+kubernetes_api_endpoint: null
+kubernetes_api_port: 6443
+kubernetes_audit_log_max_age: 30
+kubernetes_audit_log_max_backup: 10
+kubernetes_audit_log_max_size: 100
+kubernetes_audit_log_path: /var/log/apiserver/audit.log
+kubernetes_config_directory: /etc/kubernetes/config
+kubernetes_cluster_signing_duration: 8760h
+kubernetes_cluster_name: cluster
+kubernetes_dns_domain: cluster.local
+kubernetes_kubeadm_init_extra_args: ""
+kubernetes_node_cidr_mask_size: 24
+kubernetes_pki_directory: /etc/kubernetes/pki
+kubernetes_pod_subnet: 10.244.0.0/16
+kubernetes_podpidslimit: 100
+# CIS 1.2.15, 1.3.2, 1.4.1 - Profiling should be turned off. Default in kubeadm is true.
+kubernetes_profiling: false
+kubernetes_service_subnet: 10.96.0.0/16
+kubernetes_streamingconnectionidletimeout: 5m
+kubernetes_terminated_pod_gc_threshold: 10
+
+kubernetes_oidc_issuer_url: null
+kubernetes_oidc_client_id: null
+kubernetes_oidc_username_claim: upn
+kubernetes_oidc_username_prefix: "oidc:"
+kubernetes_oidc_group_claim: roles
+kubernetes_oidc_group_prefix: "oidc:"
+kubernetes_oidc_uid_claim: oid
+kubernetes_oidc_tenant: null
+
+kubernetes_strong_cypher_suites:
+- TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+- TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+- TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+- TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+- TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+
+kubernetes_vsphere_server: null
+kubernetes_vsphere_username: null
+kubernetes_vsphere_password: null
+kubernetes_vsphere_datacenter: null

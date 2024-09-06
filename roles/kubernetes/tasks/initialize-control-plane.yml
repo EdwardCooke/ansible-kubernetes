@@ -1,0 +1,168 @@
+- name: Create kubeadm file
+  ansible.builtin.template:
+    src: first-control-plane-kubeadm.yaml.j2
+    dest: "{{ kubernetes_config_directory }}/kubeadm.yaml"
+    owner: root
+    group: root
+    mode: '0600'
+    backup: false
+  register: kubeadm_file
+
+- name: Stop kubelet
+  ansible.builtin.systemd:
+    name: kubelet
+    state: stopped
+    enabled: true
+
+- name: Initialize the Kubernetes cluster
+  ansible.builtin.shell:
+    cmd: |
+      set -eo pipefail
+      kubeadm init --config {{ kubernetes_config_directory }}/kubeadm.yaml \
+        {{ kubernetes_kubeadm_init_extra_args }} 2>&1 \
+        | tee /etc/kubernetes/output/kubeadm
+    creates: /etc/kubernetes/output/kubeadm
+    executable: /bin/bash
+  register: kubeadm_init_output
+
+- name: Start kubelet
+  ansible.builtin.service:
+    name: kubelet
+    state: started
+    enabled: true
+
+- name: Write kubeadm init output to stdout
+  ansible.builtin.debug:
+    msg: "{{ kubeadm_init_output.stdout_lines }}"
+  when: kubeadm_init_output.stdout_lines is defined
+
+- name: Set cluster role binding for admin
+  ansible.builtin.shell:
+    cmd: |
+      set -eo pipefail
+      kubectl create clusterrolebinding oidc-admins \
+        --clusterrole=cluster-admin \
+        --group "{{ kubernetes_group_prefix | default('oidc:') }}Admins" \
+        --kubeconfig /etc/kubernetes/admin.conf \
+        | tee /etc/kubernetes/cluster-admin-binding-created
+    executable: /bin/bash
+    creates: /etc/kubernetes/cluster-admin-binding-created
+  when: kubeadm_init_output.stdout_lines is defined
+
+- name: Install CNI
+  ansible.builtin.import_tasks: install-cni.yml
+
+- name: Install vsphere-cpi
+  ansible.builtin.import_tasks: install-vsphere.yml
+
+# CIS 1.2.5
+- name: Install kubelet-csr-approver
+  ansible.builtin.include_tasks: install-kubelet-csr-approver.yml
+
+- name: Set admin.conf namespace to kube-system
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      kubectl config set-context --current --namespace=kube-system --kubeconfig /etc/kubernetes/admin.conf
+      touch /etc/kubernetes/output/admin-namespace-set
+    creates: /etc/kubernetes/output/admin-namespace-set
+
+- name: Create cluster role binding to make the kube-scheduler fully happy
+  ansible.builtin.shell:
+    cmd: |
+      set -eo pipefail
+      kubectl create rolebinding --kubeconfig /etc/kubernetes/admin.conf \
+        --namespace kube-system \
+        --role=extension-apiserver-authentication-reader \
+        --user system:kube-scheduler \
+        fix:kube-scheduler:extension-apiserver-authentication-reader \
+        | tee /etc/kubernetes/output/kube-scheduler-rolebinding
+    executable: /bin/bash
+    creates: /etc/kubernetes/output/kube-scheduler-rolebinding
+
+- name: Copy admin.conf
+  become: false
+  ansible.builtin.shell:
+    cmd: |
+      mkdir -p /home/edward/.kube /root/.kube
+
+      sudo cp /etc/kubernetes/admin.conf /home/edward/.kube/config
+      sudo cp /etc/kubernetes/admin.conf /root/.kube/config
+
+      sudo chown -R edward:edward /home/edward/.kube
+      sudo chown -R root:root /root/.kube
+
+# CIS 1.1.20
+- name: CIS 1.1.20 - Secure certificates
+  ansible.builtin.shell:
+    cmd: chmod 0600 {{ kubernetes_pki_directory }}/*.crt
+
+# CIS 1.2.5
+- name: CIS 1.2.5 - Copy crb-kubeletcerts.yml
+  ansible.builtin.copy:
+    src: crb-kubeletcerts.yml
+    dest: "{{ kubernetes_config_directory }}/crb-kubeletcerts.yml"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: CIS 1.2.5 - Create cluster role bindings for kubelet certs
+  ansible.builtin.shell:
+    cmd: |
+      set -eo pipefail
+      kubectl apply -f {{ kubernetes_config_directory }}/crb-kubeletcerts.yml --kubeconfig /etc/kubernetes/admin.conf | tee /etc/kubernetes/output/crb-kubeletcerts
+    executable: /bin/bash
+    creates: /etc/kubernetes/output/crb-kubeletcerts
+
+# CIS 4.1.1
+- name: CIS 4.1.1 - Set kubelet.service to 0600
+  ansible.builtin.shell:
+    cmd: chmod 0600 /usr/lib/systemd/system/kubelet.service
+
+# CIS 4.1.9
+- name: CIS 4.1.9 - Set kubelet config.yaml to 0600
+  ansible.builtin.shell:
+    cmd: chmod 0600 /var/lib/kubelet/config.yaml
+
+# CIS 5.1.5
+- name: CIS 5.1.5 - Disable service account token automount
+  block:
+    - name: Create service account patch file
+      ansible.builtin.copy:
+        content: |
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: default
+          automountServiceAccountToken: false
+        dest: /etc/kubernetes/config/default-serviceaccount-patch.yaml
+    - name: Apply service account patch
+      ansible.builtin.shell:
+        cmd: |
+          set -eo pipefail
+          export KUBECONFIG=/etc/kubernetes/admin.conf
+
+          for namespace in $(kubectl get namespaces -A -o=jsonpath="{.items[*]['metadata.name']}"); do
+            echo -n "Patching namespace $namespace - " | tee -a /etc/kubernetes/output/serviceaccount-patch
+            kubectl patch serviceaccount default -n ${namespace} --patch-file /etc/kubernetes/config/default-serviceaccount-patch.yaml | tee -a /etc/kubernetes/output/serviceaccount-patch
+          done
+
+          touch /etc/kubernetes/output/serviceaccount-patch
+        executable: /bin/bash
+        creates: /etc/kubernetes/output/serviceaccount-patch
+      register: serviceaccount_patch
+
+    - name: Output serviceaccount_patch
+      ansible.builtin.debug:
+        msg: "{{ serviceaccount_patch.stdout_lines }}"
+  rescue:
+    - name: Remove patch output file
+      ansible.builtin.file:
+        path: /etc/kubernetes/output/serviceaccount-patch
+        state: absent
+    - name: Output serviceaccount_patch error
+      ansible.builtin.debug:
+        msg: "{{ serviceaccount_patch.stderr_lines }}"
+    - name: Fail task
+      ansible.builtin.fail:
+        msg: "Failed to apply service account patch"

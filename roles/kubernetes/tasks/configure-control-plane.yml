@@ -1,0 +1,107 @@
+- name: Create kubernetes/config/patches directory
+  ansible.builtin.file:
+    dest: "{{ kubernetes_config_directory }}/patches"
+    state: directory
+    mode: '0700'
+
+- name: Create kubernetes encryption configuration
+  ansible.builtin.template:
+    src: encryption.yaml.j2
+    dest: "{{ kubernetes_config_directory }}/encryption.yaml"
+    owner: root
+    group: root
+    mode: '0600'
+    backup: false
+  register: encryption_config_file
+
+- name: Create kubernetes authorization file
+  ansible.builtin.template:
+    src: kube-api-authn.yaml.j2
+    dest: "{{ kubernetes_config_directory }}/kube-api-authn.yaml"
+    owner: root
+    group: root
+    mode: '0600'
+    backup: false
+  register: kube_api_authn_file
+
+# CIS 1.1.11
+- name: Copy etcd patches to kubernetes/config/patches directory
+  ansible.builtin.template:
+    src: etcd-patch.yaml.j2
+    dest: "{{ kubernetes_config_directory }}/patches/etcd.yaml"
+    owner: root
+    group: root
+    mode: '0600'
+
+# CIS 3.2.1
+- name: Create kubernetes audit policy file
+  ansible.builtin.copy:
+    src: audit-policy.yaml
+    dest: "{{ kubernetes_config_directory }}/audit-policy.yaml"
+    mode: '0600'
+
+- name: Create /opt/kubernetes/scripts directory
+  ansible.builtin.file:
+    dest: "/opt/kubernetes/scripts"
+    state: directory
+    mode: '0755'
+
+- name: Create etcd group
+  ansible.builtin.group:
+    name: etcd
+    system: true
+    gid: 500
+
+- name: Create etcd user
+  ansible.builtin.user:
+    name: etcd
+    comment: "etcd user"
+    system: true
+    shell: /bin/false
+    uid: 500
+    group: etcd
+
+- name: Install script to renew K8S control plane certificates
+  ansible.builtin.template:
+    src: k8s-certs-renew.sh.j2
+    dest: "/opt/kubernetes/scripts/k8s-certs-renew.sh"
+    mode: "0755"
+
+- name: Renew K8S control plane certificates monthly 1/2
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  with_items:
+  - k8s-certs-renew.service
+  - k8s-certs-renew.timer
+  register: k8s_certs_units
+
+- name: Renew K8S control plane certificates monthly 2/2
+  ansible.builtin.systemd_service:
+    name: k8s-certs-renew.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ k8s_certs_units is changed }}"
+
+- name: Add helm apt key
+  ansible.builtin.apt_key:
+    url: https://baltocdn.com/helm/signing.asc
+    state: present
+
+- name: Add helm apt repository
+  ansible.builtin.apt_repository:
+    repo: deb https://baltocdn.com/helm/stable/debian/ all main
+    state: present
+    filename: helm
+    update_cache: true
+
+- name: Install helm
+  ansible.builtin.apt:
+    name: helm
+    state: present
+
+- name: Install etcd-client on control plane nodes
+  ansible.builtin.apt:
+    name: etcd-client
+    state: present

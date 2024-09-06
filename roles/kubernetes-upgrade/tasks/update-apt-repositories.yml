@@ -1,0 +1,23 @@
+- name: Kubernetes - Download GPG keyring
+  ansible.builtin.get_url:
+    url: https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/Release.key
+    dest: /etc/apt/keyrings/kubernetes-{{ kubernetes_version }}
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Add an apt signing key for Kubernetes
+  ansible.builtin.shell: gpg --batch --yes --dearmor /etc/apt/keyrings/kubernetes-{{ kubernetes_version }}
+  args:
+    creates: /etc/apt/keyrings/kubernetes-{{ kubernetes_version }}.gpg
+
+- name: Adding apt repository for Kubernetes
+  ansible.builtin.apt_repository:
+    repo: deb [signed-by=/etc/apt/keyrings/kubernetes-{{ kubernetes_version }}.gpg] https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/ /
+    state: present
+    filename: kubernetes-{{ kubernetes_version }}.list
+
+- name: Find latest kubernetes version in apt
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600

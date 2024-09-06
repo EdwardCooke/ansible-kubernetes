@@ -1,0 +1,26 @@
+# Add cloud-provider-vsphere helm repository
+- name: Add cloud-provider-vsphere helm repository
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      helm repo add vsphere-cpi https://kubernetes.github.io/cloud-provider-vsphere
+      helm repo update
+
+- name: Set vsphere cpi config
+  ansible.builtin.template:
+    src: vsphere-cpi.yaml.j2
+    dest: "{{ kubernetes_config_directory }}/vsphere-cpi.yaml"
+
+- name: Install cloud-provider-vsphere helm chart
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      set -o pipefail
+      helm upgrade --install vsphere-cpi vsphere-cpi/vsphere-cpi \
+        --kubeconfig /etc/kubernetes/admin.conf \
+        --namespace kube-system \
+        --values {{ kubernetes_config_directory }}/vsphere-cpi.yaml
+
+      touch /etc/kubernetes/output/vsphere-cpi-installed
+    creates: /etc/kubernetes/output/vsphere-cpi-installed
+    executable: /bin/bash
