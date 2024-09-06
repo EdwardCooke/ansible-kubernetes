@@ -12,7 +12,6 @@
   roles:
   - role: ../roles/docker
     vars:
-      use_official_apt_repository: false
       containerd_only: true
 
 - name: "Install kubernetes"
