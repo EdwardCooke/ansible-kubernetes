@@ -236,6 +236,15 @@ Set by default
 
 Fixed for initally created namespaces, it's a mnaul process to maintain the configuration on all default service accounts
 
-### 5.1.6 - 5.1.11
+### 5.1.6 
+
+Set by default
+
+### 5.1.7 - Avoid use of system:masters group
+
+We bind the group `oidc:Admins` to the `system:masters` role. It is up to you, the cluster administrator, to set
+appropriate levels.
+
+### 5.1.8 - 5.1.11
 
 Set by default
