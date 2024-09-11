@@ -8,6 +8,6 @@
   - none
 
 - name: Disable swap
-  ansible.builtin.shell:
-    cmd: swapoff -a
+  ansible.builtin.command: swapoff -a
   when: ansible_swaptotal_mb > 0 and allowswap is not defined
+  changed_when: true

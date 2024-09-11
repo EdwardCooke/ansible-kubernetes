@@ -1,13 +1,13 @@
 - name: "Update apt repositories"
   ansible.builtin.apt:
-    update_cache: yes
+    update_cache: true
 
 - name: Docker - Install Docker
   ansible.builtin.apt:
     name:
     - gpg
     state: present
-    
+
 - name: Docker - Create keyring directory
   ansible.builtin.file:
     path: /etc/apt/keyrings
@@ -25,15 +25,15 @@
     group: root
 
 - name: Docker - Dearmor gpg keyring
-  ansible.builtin.shell: gpg --batch --yes --dearmor /etc/apt/keyrings/docker
+  ansible.builtin.command: gpg --batch --yes --dearmor /etc/apt/keyrings/docker
   args:
     creates: /etc/apt/keyrings/docker.gpg
 
 - name: Docker - Add Docker Repository - Official
   ansible.builtin.apt_repository:
-    repo: deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/{{ ansible_distribution|lower }} jammy stable
+    repo: deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] {{ docker_mirror }} {{ ansible_distribution_release | lower }} stable
     state: present
-    update_cache: yes
+    update_cache: true
     filename: docker
 
 - name: Install Container-d
@@ -58,6 +58,5 @@
   ansible.builtin.user:
     name: edward
     groups: docker
-    append: yes
+    append: true
   when: containerd_only is not defined
-

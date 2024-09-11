@@ -7,11 +7,13 @@
     - kubernetes_api_port > 0
     - kubernetes_oidc_issuer_url != None
     - kubernetes_oidc_client_id != None
-    - kubernetes_oidc_tenant != None
+    - (kubernetes_kubelogin_flavor == 'azure' and kubernetes_kubelogin_azure_tenant != None and kubernetes_kubelogin_azure_client_id != None) or kubernetes_kubelogin_flavor == 'int128'
     - kubernetes_vsphere_server != None
     - kubernetes_vsphere_username != None
     - kubernetes_vsphere_password != None
     - kubernetes_vsphere_datacenter != None
+    - kubernetes_kubelogin_flavor == 'azure' or kubernetes_kubelogin_flavor == 'int128'
+
 
 - name: Install Packages
   ansible.builtin.import_tasks: install-packages.yml
@@ -72,13 +74,15 @@
   delegate_to: "{{ first_kube_control_plane }}"
   run_once: true
   register: temp_token
+  changed_when: true
 
 - name: Upload certificates so they are fresh and not expired
-  ansible.builtin.shell:
+  ansible.builtin.command:
     cmd: kubeadm init phase --config {{ kubernetes_config_directory }}/kubeadm.yaml upload-certs --upload-certs
   register: kubeadm_upload_cert
   run_once: true
   delegate_to: "{{ first_kube_control_plane }}"
+  changed_when: true
 
 - name: Set facts
   ansible.builtin.set_fact:

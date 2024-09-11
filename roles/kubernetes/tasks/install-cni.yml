@@ -1,45 +1,31 @@
-# - name: Configure cilium values
-#   ansible.builtin.template:
-#     src: cilium.yaml.j2
-#     dest: "{{ kubernetes_config_directory }}/cilium.yaml"
+- name: Install CNI
+  block:
 
-# - name: Get Cilium
-#   ansible.builtin.shell:
-#     cmd: |
-#       set -e
-#       set -o pipefail
-#       mkdir -p {{ kubernetes_config_directory }}/cilium
-#       cd {{ kubernetes_config_directory }}/cilium
-#       curl -LO https://github.com/cilium/cilium/archive/main.tar.gz
-#       tar xzf main.tar.gz
-#       cd cilium-main/install/kubernetes
-#       helm upgrade --install cilium ./cilium \
-#         --kubeconfig /etc/kubernetes/admin.conf \
-#         --namespace kube-system \
-#         --values {{ kubernetes_config_directory }}/cilium.yaml \
-#         2>&1 | tee /etc/kubernetes/output/cilium-installed
-#     creates: /etc/kubernetes/output/cilium-installed
-#     executable: /bin/bash
-#   register: cilium
+  - name: Install Calico
+    ansible.builtin.shell:
+      cmd: |
+        set -e
+        set -o pipefail
+        kubectl apply --kubeconfig /etc/kubernetes/admin.conf -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.1/manifests/calico.yaml \
+          | tee /etc/kubernetes/output/calico-installed
+      creates: /etc/kubernetes/output/calico-installed
+      executable: /bin/bash
+    register: calico
+    when: kubernetes_cni_calico
 
-# - name: Write cilium to stdout
-#   ansible.builtin.debug:
-#     msg: "{{ cilium.stdout_lines }}"
-#   when: cilium.stdout_lines is defined
+  rescue:
+  - name: Delete calico-installed
+    ansible.builtin.file:
+      path: /etc/kubernetes/output/calico-installed
+      state: absent
 
-- name: Install Calico
-  ansible.builtin.shell:
-    cmd: |
-      set -e
-      set -o pipefail
-      kubectl apply --kubeconfig /etc/kubernetes/admin.conf 2>&1 \
-        -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.1/manifests/calico.yaml \
-        | tee /etc/kubernetes/output/calico-installed
-    creates: /etc/kubernetes/output/calico-installed1
-    executable: /bin/bash
-  register: calico
+  - name: Write calico to stdout
+    ansible.builtin.debug:
+      msg: |
+        {{ calico.stdout_lines }}
+        {{ calico.stderr_lines }}
+    when: kubernetes_cni_calico and calico.stdout_lines is defined
 
-- name: Write calico to stdout
-  ansible.builtin.debug:
-    msg: "{{ calico.stdout_lines }}"
-  when: calico.stdout_lines is defined
+  - name: Fail calico
+    ansible.builtin.fail:
+      msg: "Failed to install Calico"

@@ -1,26 +1,58 @@
 # Add cloud-provider-vsphere helm repository
-- name: Add cloud-provider-vsphere helm repository
-  ansible.builtin.shell:
-    cmd: |
-      set -e
-      helm repo add vsphere-cpi https://kubernetes.github.io/cloud-provider-vsphere
-      helm repo update
+- name: Install VSphere CPI
+  block:
+  - name: Add cloud-provider-vsphere helm repository
+    ansible.builtin.shell:
+      cmd: |
+        set -e
+        helm repo add vsphere-cpi https://kubernetes.github.io/cloud-provider-vsphere
+        helm repo update
+        touch /etc/kubernetes/output/vsphere-cpi-repo-added
+      executable: /bin/bash
+      creates: /etc/kubernetes/output/vsphere-cpi-repo-added
+    register: vsphere_cpi_repo_added
 
-- name: Set vsphere cpi config
-  ansible.builtin.template:
-    src: vsphere-cpi.yaml.j2
-    dest: "{{ kubernetes_config_directory }}/vsphere-cpi.yaml"
+  - name: Set vsphere cpi config
+    ansible.builtin.template:
+      src: vsphere-cpi.yaml.j2
+      dest: "{{ kubernetes_config_directory }}/vsphere-cpi.yaml"
+      owner: root
+      group: root
+      mode: '0600'
 
-- name: Install cloud-provider-vsphere helm chart
-  ansible.builtin.shell:
-    cmd: |
-      set -e
-      set -o pipefail
-      helm upgrade --install vsphere-cpi vsphere-cpi/vsphere-cpi \
-        --kubeconfig /etc/kubernetes/admin.conf \
-        --namespace kube-system \
-        --values {{ kubernetes_config_directory }}/vsphere-cpi.yaml
+  - name: Install cloud-provider-vsphere helm chart
+    ansible.builtin.shell:
+      cmd: |
+        set -eo pipefail
+        helm upgrade --install vsphere-cpi vsphere-cpi/vsphere-cpi \
+          --kubeconfig /etc/kubernetes/admin.conf \
+          --namespace kube-system \
+          --values {{ kubernetes_config_directory }}/vsphere-cpi.yaml
 
-      touch /etc/kubernetes/output/vsphere-cpi-installed
-    creates: /etc/kubernetes/output/vsphere-cpi-installed
-    executable: /bin/bash
+        touch /etc/kubernetes/output/vsphere-cpi-installed
+      executable: /bin/bash
+      creates: /etc/kubernetes/output/vsphere-cpi-installed
+    register: vsphere_cpi_installed
+  rescue:
+  - name: Delete vsphere-cpi-installed
+    ansible.builtin.file:
+      path: /etc/kubernetes/output/vsphere-cpi-installed
+      state: absent
+
+  - name: Output vsphere-cpi-repo-added lines
+    ansible.builtin.debug:
+      msg: |
+        {{ vsphere_cpi_repo_added.stdout_lines }}
+        {{ vsphere_cpi_repo_added.stderr_lines }}
+    when: vsphere_cpi_repo_added.stdout_lines is defined
+
+  - name: Output vsphere-cpi-installed
+    ansible.builtin.debug:
+      msg: |
+        {{ vsphere_cpi_installed.stdout_lines }}
+        {{ vsphere_cpi_installed.stderr_lines }}
+    when: vsphere_cpi_installed.stdout_lines is defined
+
+  - name: Fail vsphere-cpi
+    ansible.builtin.fail:
+      msg: "Failed to install VSphere CPI"

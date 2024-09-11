@@ -1,13 +1,37 @@
 - name: Set containerd systemd cgroup
-  ansible.builtin.shell:
-    cmd: |
-      containerd config default | sed "s/SystemdCgroup = false/SystemdCgroup = true/" > /etc/containerd/config.toml
-      touch /etc/kubernetes/output/containerd-configured
-    creates: /etc/kubernetes/output/containerd-configured
-  register: containerd_configured
+  block:
+  - name: Set containerd systemd cgroup
+    ansible.builtin.shell:
+      cmd: |
+        set -eo pipefail
+        containerd config default | sed "s/SystemdCgroup = false/SystemdCgroup = true/" > /etc/containerd/config.toml
+        touch /etc/kubernetes/output/containerd-configured
+      executable: /bin/bash
+      creates: /etc/kubernetes/output/containerd-configured
+    register: containerd_configured
 
-- name: Restart containerd service
-  ansible.builtin.service:
-    name: containerd
-    state: restarted
-  when: containerd_configured.changed
+  - name: Restart containerd service
+    ansible.builtin.service:
+      name: containerd
+      state: restarted
+    when: containerd_configured.changed
+
+  rescue:
+  - name: Output containerd_configured
+    ansible.builtin.debug:
+      msg: |
+        {{ containerd_configured.stdout_lines }}
+        {{ containerd_configured.stderr_lines }}
+    when: containerd_configured.stdout_lines is defined
+
+  - name: Remove containerd systemd cgroup
+    ansible.builtin.file:
+      state: absent
+      path: "{{ item }}"
+    with_items:
+    - /etc/kubernetes/output/containerd-configured
+    - /etc/containerd/config.toml
+
+  - name: Fail containerd systemd cgroup
+    ansible.builtin.fail:
+      msg: "Failed to set containerd systemd cgroup"

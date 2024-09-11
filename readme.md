@@ -15,4 +15,5 @@ control plane.
 
 ## CIS Benchmark
 
-Review the `hardening.md` to see the status of each benchmark test.
+Review the `hardening.md` to see the status of each benchmark test. Most of them were handeled out of the box
+by kubeadm, the ones that could be resolved are.

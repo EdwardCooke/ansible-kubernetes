@@ -26,7 +26,6 @@ discovery:
     token: "{{ join_token}}"
     unsafeSkipCAVerification: true
 nodeRegistration:
-  # name: {{ inventory_hostname }}
   kubeletExtraArgs:
     cloud-provider: "external"
     node-ip: "{{ ansible_default_ipv4.address}}"

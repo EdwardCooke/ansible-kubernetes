@@ -96,8 +96,12 @@ metricsBindAddress: "127.0.0.1:10249"
 ---
 apiVersion: kubeadm.k8s.io/v1beta3
 kind: InitConfiguration
-# skipPhases:
-# - addon/kube-proxy
+{% if kubernetes_init_skip_phases is defined and kubernetes_init_skip_phases | length > 0 %}
+skipPhases:
+{% for phase in kubernetes_init_skip_phases %}
+- {{ phase }}
+{% endfor %}
+{% endif %}
 nodeRegistration:
   kubeletExtraArgs:
     cloud-provider: "external"
