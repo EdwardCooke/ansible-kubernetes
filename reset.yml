@@ -145,3 +145,11 @@
       connect_timeout: 300
       msg: Rebooting to complete cleanup
       reboot_timeout: 300
+
+- name: Post reset hooks
+  ansible.builtin.include_tasks: "{{ item }}"
+  vars:
+    dns_key_secret: "ZmRhc2Foa2pmbGRzYTc4OTMyZmRzYWhrCg=="
+  when:
+  - kubernetes_hookfiles.post_reset is defined
+  run_once: true
